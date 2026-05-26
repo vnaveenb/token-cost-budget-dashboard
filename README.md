@@ -2,10 +2,11 @@
 
 > A real-time LLM usage tracker with per-request cost attribution, budget enforcement, team/project-level quotas, and a live dashboard — works with any LiteLLM-supported provider.
 
-![Status](https://img.shields.io/badge/Status-Planning-yellow)
+![Status](https://img.shields.io/badge/Status-Active-brightgreen)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?logo=fastapi&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)
 ![SQLite](https://img.shields.io/badge/DB-SQLite-003B57?logo=sqlite&logoColor=white)
+![Tests](https://img.shields.io/badge/Tests-40%20passing-brightgreen)
 
 ---
 
@@ -22,7 +23,32 @@ This is what production LLM teams build internally at Anthropic, OpenAI, and eve
 
 ---
 
-## Architecture Plan
+## Quick Start
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Seed realistic demo data (500 calls across 30 days)
+python examples/simulate_load.py --days 30 --calls 500
+
+# 3. Start the dashboard server
+uvicorn src.api:app --port 8100
+
+# 4. Open the dashboard
+open http://localhost:8100/dashboard
+```
+
+Or run with Docker:
+
+```bash
+docker build -t cost-dashboard .
+docker run -p 8100:8100 -v $(pwd)/data:/app/data cost-dashboard
+```
+
+---
+
+## Architecture
 
 ### System Overview
 
@@ -56,7 +82,7 @@ This is what production LLM teams build internally at Anthropic, OpenAI, and eve
 │    usage_log    — one row per LLM call                          │
 │    budgets      — per project/user/global limits                 │
 │    alerts       — threshold rules + notification state          │
-│    pricing      — cost per model per 1K input/output tokens     │
+│    pricing      — cost per model per 1M input/output tokens     │
 └───────────────────────────┬─────────────────────────────────────┘
                             │  Reads from
                             ▼
@@ -177,7 +203,7 @@ Response:
 
 ---
 
-## Pricing Table (Bundled)
+## Pricing Table
 
 | Model | Input $/1M | Output $/1M |
 |---|---|---|
@@ -189,70 +215,58 @@ Response:
 | gemini/gemini-2.5-pro | $1.25 | $10.00 |
 | mistral/mistral-large | $2.00 | $6.00 |
 
-Updated on new model releases — just add a row.
+Seeded automatically on first run via `INSERT OR IGNORE`. Add new models via `PUT /api/pricing/{model}` or directly in `src/db.py`.
 
 ---
 
-## Dashboard Features (Planned)
+## Dashboard
 
 ### Live HTML Dashboard (`/dashboard`)
 
-1. **Cost over time** — line chart, daily/hourly granularity
-2. **Cost by model** — pie chart showing spend distribution
-3. **Top consumers** — table ranked by project/user/endpoint
-4. **Budget gauges** — visual % used per budget (green/amber/red)
-5. **Recent calls** — scrolling table of last 50 requests with token counts + cost
-6. **Alerts panel** — active warnings and their trigger time
+Single-file Chart.js dashboard — no build step, no React. Auto-refreshes every 30 seconds.
 
-Tech: single HTML file with embedded JS (Chart.js), served by FastAPI. No build step, no React. Refreshes via polling or SSE.
-
----
-
-## Key Concepts to Demonstrate
-
-- **LiteLLM callbacks** — transparent logging without modifying application code
-- **Cost calculation** — mapping model + tokens → dollars
-- **Budget enforcement** — pre-call and post-call checks, configurable actions
-- **Time-series aggregation** — SQL queries for dashboards (SUM, GROUP BY date/model)
-- **Alert thresholds** — percentage-based warnings (80%, 90%, 100%)
-- **Extensible pricing** — new models added to a table, not hardcoded
-- **Separation of concerns** — the dashboard is a read layer; the tracker is a write layer
+1. **KPI row** — total cost, total calls, input tokens, output tokens (7d)
+2. **Cost over time** — line chart, 30-day daily granularity
+3. **Cost by model** — doughnut chart showing spend distribution
+4. **Budget gauges** — visual % used per budget (green < 80% / amber 80–100% / red ≥ 100%)
+5. **Top consumers** — table ranked by project cost
+6. **Recent calls** — scrolling table of last 50 requests with token counts, cost, latency, status
 
 ---
 
-## Planned Project Structure
+## Integration
 
+```python
+# In any LiteLLM-using project, at startup:
+from src.config import get_config
+from src.db import configure as configure_db, init_db
+from src.tracker import register_callbacks
+
+cfg = get_config()
+configure_db(cfg.database.path)
+init_db()
+register_callbacks(project_id="rag-app", default_user="api")
+
+# That's it. All litellm.completion() calls are now logged automatically.
 ```
-06-token-cost-budget-dashboard/
-├── config.yaml              # Dashboard port, default budgets, pricing overrides
-├── .env.example
-├── requirements.txt
-├── src/
-│   ├── config.py            # Settings
-│   ├── db.py                # SQLite connection + schema migrations
-│   ├── models.py            # Pydantic models for usage_log, budget, alert
-│   ├── pricing.py           # Pricing lookup table + cost calculator
-│   ├── tracker.py           # LiteLLM callback — logs usage, checks budgets
-│   ├── budget.py            # Budget CRUD + enforcement logic
-│   ├── queries.py           # Aggregation queries for dashboard
-│   ├── api.py               # FastAPI — /api/* routes
-│   └── dashboard.py         # FastAPI — serves /dashboard HTML
-├── static/
-│   └── dashboard.html       # Single-file HTML dashboard (Chart.js)
-├── schema/
-│   └── init.sql             # SQLite schema DDL
-├── tests/
-│   ├── test_pricing.py      # Cost calculation tests
-│   ├── test_tracker.py      # Logging tests
-│   └── test_budget.py       # Budget enforcement tests
-└── examples/
-    ├── integrate.py          # How to wire into Project 1 or 4
-    └── simulate_load.py      # Generate fake usage data for demo
+
+For budget enforcement (rejects calls when over limit):
+
+```python
+from src.tracker import tracked_completion
+
+response = await tracked_completion(
+    model="gemini/gemini-2.5-flash",
+    messages=[{"role": "user", "content": "..."}],
+    project_id="rag-app",
+    user_id="alice",
+    endpoint="/query",
+)
 ```
 
 ---
 
-## API Endpoints (Planned)
+## API Endpoints
 
 ### Usage
 
@@ -262,6 +276,8 @@ Tech: single HTML file with embedded JS (Chart.js), served by FastAPI. No build 
 | `GET` | `/api/usage/summary` | Aggregated stats (total cost, tokens, calls) |
 | `GET` | `/api/usage/daily` | Daily breakdown for charting |
 | `GET` | `/api/usage/by-model` | Cost grouped by model |
+| `GET` | `/api/usage/top-consumers` | Ranked by project or user spend |
+| `GET` | `/api/usage/recent` | Last N calls with full detail |
 
 ### Budgets
 
@@ -269,16 +285,18 @@ Tech: single HTML file with embedded JS (Chart.js), served by FastAPI. No build 
 |---|---|---|
 | `GET` | `/api/budgets` | List all budgets |
 | `POST` | `/api/budgets` | Create a budget rule |
+| `GET` | `/api/budgets/status` | Current spend vs limit for all budgets |
 | `PUT` | `/api/budgets/{id}` | Update limit or action |
 | `DELETE` | `/api/budgets/{id}` | Remove a budget |
-| `GET` | `/api/budgets/status` | Current spend vs limit for all active budgets |
 
-### Alerts
+### Alerts & Pricing
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/alerts` | Active alerts |
+| `GET` | `/api/alerts` | Active alert configurations |
 | `POST` | `/api/alerts/configure` | Set threshold (e.g., alert at 80%) |
+| `GET` | `/api/pricing` | List all model pricing |
+| `PUT` | `/api/pricing/{model}` | Override pricing for a model |
 
 ### Dashboard
 
@@ -286,28 +304,67 @@ Tech: single HTML file with embedded JS (Chart.js), served by FastAPI. No build 
 |---|---|---|
 | `GET` | `/dashboard` | Serves the live HTML dashboard |
 | `GET` | `/api/health` | Service status |
+| `GET` | `/docs` | Auto-generated OpenAPI docs |
 
 ---
 
-## Integration with Other Projects
+## Project Structure
 
-This dashboard is designed to **wrap around** any LiteLLM-using project:
-
-```python
-# In Project 1 or Project 4, at startup:
-from cost_dashboard.src.tracker import register_callbacks
-
-register_callbacks(project_id="rag-app", default_user="api")
-
-# That's it. All LiteLLM calls are now logged automatically.
+```
+06-token-cost-budget-dashboard/
+├── config.yaml              # Dashboard port, default budgets, pricing overrides
+├── .env.example             # API key template
+├── requirements.txt
+├── pytest.ini
+├── Dockerfile
+├── .github/
+│   └── workflows/
+│       └── ci.yml           # pytest → Docker build+push to GHCR
+├── src/
+│   ├── config.py            # Settings loader (YAML + defaults)
+│   ├── db.py                # Thread-local SQLite + WAL mode + schema init
+│   ├── models.py            # Pydantic v2 models
+│   ├── pricing.py           # Cost calculator + pricing CRUD
+│   ├── tracker.py           # LiteLLM CustomLogger + tracked_completion()
+│   ├── budget.py            # Budget CRUD + enforce_budget() gate
+│   ├── queries.py           # Aggregation SQL for dashboard
+│   ├── api.py               # FastAPI routes
+│   └── dashboard.py         # uvicorn entrypoint
+├── static/
+│   └── dashboard.html       # Single-file Chart.js dashboard
+├── schema/
+│   └── init.sql             # SQLite DDL (4 tables + indexes)
+├── tests/
+│   ├── test_pricing.py      # 11 cost calculation tests
+│   ├── test_tracker.py      # 9 logging + callback tests
+│   └── test_budget.py       # 20 enforcement + CRUD tests
+└── examples/
+    ├── integrate.py          # Drop-in integration for Project 1 or 4
+    └── simulate_load.py      # Generate fake usage data for demo
 ```
 
-Or run as a standalone proxy:
+---
+
+## Testing
 
 ```bash
-# Standalone mode — your apps point to this as an LLM proxy
-uvicorn src.api:app --port 8100
+pytest tests/ -v
+# 40 passed in ~7s
 ```
+
+Tests use `tmp_path` fixtures — each test gets an isolated in-memory SQLite database. No mocking of the DB layer; all assertions hit real SQL.
+
+---
+
+## Key Concepts Demonstrated
+
+- **LiteLLM callbacks** — transparent logging without modifying application code
+- **Cost calculation** — mapping model + tokens → dollars with prefix-match for versioned model names
+- **Budget enforcement** — pre-call gate via `tracked_completion()`, configurable warn/reject actions
+- **Time-series aggregation** — SQL queries with `strftime`, `GROUP BY date/model`, `COALESCE(SUM, 0)`
+- **Thread-safe SQLite** — `threading.local()` + WAL mode for concurrent FastAPI + callback writes
+- **Extensible pricing** — new models added via API or DB row, not hardcoded
+- **Separation of concerns** — dashboard is a read layer; tracker is a write layer
 
 ---
 
@@ -316,17 +373,3 @@ uvicorn src.api:app --port 8100
 This project is the foundation for:
 
 - **Project 16 — Production Monitoring Loop**: adds drift detection (answer quality over time), latency percentile tracking, LLM-as-judge scoring, and auto-scaling triggers on top of this cost data.
-
----
-
-## Build Order Within This Project
-
-1. `schema/init.sql` + `src/db.py` — define tables, test migrations
-2. `src/pricing.py` — cost calculator with bundled pricing table, test edge cases
-3. `src/tracker.py` — LiteLLM callback, write to SQLite, test with mock calls
-4. `src/budget.py` — enforcement logic (warn/reject), test thresholds
-5. `src/queries.py` — aggregation SQL for dashboard data
-6. `src/api.py` — FastAPI endpoints
-7. `static/dashboard.html` — Chart.js visualization
-8. `examples/simulate_load.py` — generate test data to demo the dashboard
-9. `examples/integrate.py` — show how to plug into Project 1 or 4
