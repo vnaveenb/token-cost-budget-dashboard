@@ -43,8 +43,37 @@ Or run with Docker:
 
 ```bash
 docker build -t cost-dashboard .
-docker run -p 8100:8100 -v $(pwd)/data:/app/data cost-dashboard
+docker run -p 8100:8100 -v dashboard_data:/app/data cost-dashboard
 ```
+
+> Use a **named volume** (`dashboard_data`) rather than a bind mount so Project 04 can share the same volume and write its usage data into the same database.
+
+---
+
+## Live Integration with Project 04
+
+Project 04 (Agent Tool Calls + Retries) ships with this tracker built in. On startup it calls `register_callbacks(project_id="04-agent-retries")` — every LLM reasoning step the agent makes is logged here automatically.
+
+**In Docker**, both services share the `dashboard_data` named volume:
+
+```
+agent-tool-calls  ──writes──▶  dashboard_data:/app/data/usage.db  ◀──reads──  token-cost-dashboard
+```
+
+To run both together:
+
+```bash
+# Create the shared volume once
+docker volume create dashboard_data
+
+# Start the dashboard first (runs init_db)
+cd 06-token-cost-budget-dashboard && docker compose up -d
+
+# Start the agent (depends_on: token-cost-dashboard in Portainer stack)
+cd ../04-agent-tool-calls-retries && docker compose up -d
+```
+
+The dashboard will show a `04-agent-retries` project entry under Top Consumers and Budget Gauges as soon as the first agent run completes.
 
 ---
 
@@ -312,14 +341,15 @@ response = await tracked_completion(
 
 ```
 06-token-cost-budget-dashboard/
+├── Dockerfile               # Standalone image; exposes port 8100
+├── docker-compose.yml       # Mounts dashboard_data named volume (shared with project 04)
+├── .github/
+│   └── workflows/
+│       └── ci.yml           # pytest → Docker build+push to GHCR
 ├── config.yaml              # Dashboard port, default budgets, pricing overrides
 ├── .env.example             # API key template
 ├── requirements.txt
 ├── pytest.ini
-├── Dockerfile
-├── .github/
-│   └── workflows/
-│       └── ci.yml           # pytest → Docker build+push to GHCR
 ├── src/
 │   ├── config.py            # Settings loader (YAML + defaults)
 │   ├── db.py                # Thread-local SQLite + WAL mode + schema init
