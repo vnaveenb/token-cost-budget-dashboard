@@ -1,25 +1,18 @@
-name: 06 – CI & Build Docker Image
+name: CI & Build Docker Image
 
 on:
   push:
     branches: [main]
-    paths:
-      - "06-token-cost-budget-dashboard/**"
   pull_request:
     branches: [main]
-    paths:
-      - "06-token-cost-budget-dashboard/**"
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/06-token-cost-budget-dashboard
+  IMAGE_NAME: ${{ github.repository_owner }}/token-cost-budget-dashboard
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: 06-token-cost-budget-dashboard
 
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +22,6 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: 06-token-cost-budget-dashboard/requirements.txt
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -69,7 +61,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: 06-token-cost-budget-dashboard
+          context: .
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
