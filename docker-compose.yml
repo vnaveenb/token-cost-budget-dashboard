@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  token-cost-dashboard:
+    image: ghcr.io/vnaveenb/06-token-cost-budget-dashboard:latest
+    container_name: token-cost-dashboard
+    volumes:
+      - dashboard_data:/app/data
+    ports:
+      - "8100:8100"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8100/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    restart: unless-stopped
+
+volumes:
+  dashboard_data:
