@@ -5,7 +5,7 @@ services:
     image: ghcr.io/vnaveenb/06-token-cost-budget-dashboard:latest
     container_name: token-cost-dashboard
     volumes:
-      - dashboard_data:/app/data
+      - tracker_data:/app/data
     ports:
       - "8100:8100"
     healthcheck:
@@ -19,4 +19,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  dashboard_data:
+  tracker_data:
+    external: true
