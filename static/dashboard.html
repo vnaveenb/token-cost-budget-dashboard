@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token + Cost Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #7d8590;
+      --accent: #4ade80;
+      --amber: #fbbf24;
+      --red: #f87171;
+      --blue: #60a5fa;
+      --purple: #a78bfa;
+      --orange: #fb923c;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'IBM Plex Mono', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    header h1 { font-size: 15px; color: var(--accent); letter-spacing: 0.05em; }
+    header .meta { color: var(--muted); font-size: 11px; }
+    button#refresh-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 12px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 11px;
+      border-radius: 4px;
+    }
+    button#refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    main { padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; }
+
+    /* KPI cards */
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+    }
+    .kpi-card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .kpi-card .value { font-size: 22px; margin-top: 6px; color: var(--accent); }
+    .kpi-card .sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+    /* Charts */
+    .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+    }
+    .card h2 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
+    .chart-wrap { position: relative; height: 220px; }
+
+    /* Budget gauges */
+    .budgets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .gauge-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px;
+    }
+    .gauge-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 12px; }
+    .gauge-bar-bg { background: var(--bg); border-radius: 3px; height: 8px; overflow: hidden; }
+    .gauge-bar { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+    .gauge-footer { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--muted); }
+
+    /* Tables row */
+    .tables-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .table-wrap { overflow-x: auto; max-height: 280px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th { text-align: left; color: var(--muted); font-weight: normal; border-bottom: 1px solid var(--border); padding: 6px 8px; position: sticky; top: 0; background: var(--surface); }
+    td { padding: 5px 8px; border-bottom: 1px solid rgba(48,54,61,0.4); white-space: nowrap; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .status-success { color: var(--accent); }
+    .status-error { color: var(--red); }
+    .empty-msg { color: var(--muted); text-align: center; padding: 20px; font-size: 12px; }
+
+    @media (max-width: 900px) {
+      .kpi-row { grid-template-columns: repeat(2, 1fr); }
+      .charts-row, .tables-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>&#9632; TOKEN + COST DASHBOARD</h1>
+  <div class="meta">Last updated: <span id="last-updated">—</span></div>
+  <button id="refresh-btn" onclick="refresh()">&#8635; Refresh</button>
+</header>
+
+<main>
+
+  <!-- KPI Cards -->
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="label">Total Cost (7d)</div>
+      <div class="value" id="kpi-cost">$0.000000</div>
+      <div class="sub" id="kpi-calls">0 calls</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Input Tokens (7d)</div>
+      <div class="value" id="kpi-input">0</div>
+      <div class="sub">prompt tokens</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Output Tokens (7d)</div>
+      <div class="value" id="kpi-output">0</div>
+      <div class="sub">completion tokens</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Avg Cost / Call</div>
+      <div class="value" id="kpi-avg">$0.000000</div>
+      <div class="sub">last 7 days</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-row">
+    <div class="card">
+      <h2>Cost Over Time (30d)</h2>
+      <div class="chart-wrap"><canvas id="line-chart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Cost by Model (7d)</h2>
+      <div class="chart-wrap"><canvas id="donut-chart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Budget Gauges -->
+  <div class="card">
+    <h2>Budget Status</h2>
+    <div class="budgets-grid" id="budgets-grid">
+      <div class="empty-msg">No budgets configured. POST to /api/budgets to create one.</div>
+    </div>
+  </div>
+
+  <!-- Tables -->
+  <div class="tables-row">
+    <div class="card">
+      <h2>Top Consumers (7d)</h2>
+      <div class="table-wrap">
+        <table id="consumers-table">
+          <thead><tr><th>Project / User</th><th>Cost</th><th>Calls</th></tr></thead>
+          <tbody><tr><td colspan="3" class="empty-msg">No data</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Recent Calls</h2>
+      <div class="table-wrap">
+        <table id="recent-table">
+          <thead><tr><th>Time</th><th>Model</th><th>In</th><th>Out</th><th>Cost</th><th>ms</th><th>Status</th></tr></thead>
+          <tbody><tr><td colspan="7" class="empty-msg">No data</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  const API = '';
+  const PALETTE = ['#4ade80','#60a5fa','#fbbf24','#a78bfa','#fb923c','#f87171','#34d399','#818cf8'];
+
+  let lineChart = null;
+  let donutChart = null;
+
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+
+  async function fetchAll() {
+    const [summary, daily, byModel, budgetStatus, recent, topConsumers] =
+      await Promise.all([
+        fetch(`${API}/api/usage/summary?range=7`).then(r => r.json()),
+        fetch(`${API}/api/usage/daily?range=30`).then(r => r.json()),
+        fetch(`${API}/api/usage/by-model?range=7`).then(r => r.json()),
+        fetch(`${API}/api/budgets/status`).then(r => r.json()),
+        fetch(`${API}/api/usage/recent?limit=50`).then(r => r.json()),
+        fetch(`${API}/api/usage/top-consumers?scope=project&range=7&limit=10`).then(r => r.json()),
+      ]);
+    return { summary, daily, byModel, budgetStatus, recent, topConsumers };
+  }
+
+  // ── KPIs ───────────────────────────────────────────────────────────────────
+
+  function renderKPIs(summary) {
+    const calls = summary.total_calls || 0;
+    const cost = summary.total_cost_usd || 0;
+    document.getElementById('kpi-cost').textContent = '$' + cost.toFixed(6);
+    document.getElementById('kpi-calls').textContent = fmtNum(calls) + ' calls';
+    document.getElementById('kpi-input').textContent = fmtNum(summary.total_input_tokens || 0);
+    document.getElementById('kpi-output').textContent = fmtNum(summary.total_output_tokens || 0);
+    const avg = calls > 0 ? cost / calls : 0;
+    document.getElementById('kpi-avg').textContent = '$' + avg.toFixed(6);
+  }
+
+  // ── Line Chart ─────────────────────────────────────────────────────────────
+
+  function renderLineChart(daily) {
+    const labels = daily.map(d => d.date);
+    const data = daily.map(d => parseFloat(d.cost_usd) || 0);
+    if (lineChart) { lineChart.destroy(); lineChart = null; }
+    const ctx = document.getElementById('line-chart').getContext('2d');
+    lineChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Cost USD',
+          data,
+          borderColor: '#4ade80',
+          backgroundColor: 'rgba(74,222,128,0.06)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2,
+          borderWidth: 1.5,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => '$' + ctx.parsed.y.toFixed(6)
+            }
+          }
+        },
+        scales: {
+          x: { grid: { color: '#21262d' }, ticks: { color: '#7d8590', maxTicksLimit: 8 } },
+          y: { grid: { color: '#21262d' }, ticks: { color: '#7d8590', callback: v => '$' + v.toFixed(4) } }
+        }
+      }
+    });
+  }
+
+  // ── Donut Chart ────────────────────────────────────────────────────────────
+
+  function renderDonutChart(byModel) {
+    const labels = byModel.map(m => m.model);
+    const data = byModel.map(m => parseFloat(m.cost_usd) || 0);
+    if (donutChart) { donutChart.destroy(); donutChart = null; }
+    const ctx = document.getElementById('donut-chart').getContext('2d');
+    donutChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{
+          data,
+          backgroundColor: PALETTE,
+          borderColor: '#0d1117',
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: '#7d8590', font: { size: 10 }, boxWidth: 10, padding: 8 }
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.label}: $${ctx.parsed.toFixed(6)}`
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // ── Budget Gauges ──────────────────────────────────────────────────────────
+
+  function renderBudgetGauges(statuses) {
+    const grid = document.getElementById('budgets-grid');
+    if (!statuses || statuses.length === 0) {
+      grid.innerHTML = '<div class="empty-msg">No budgets configured. POST to /api/budgets to create one.</div>';
+      return;
+    }
+    grid.innerHTML = statuses.map(s => {
+      const b = s.budget;
+      const pct = Math.min(s.pct_used, 100);
+      const color = pct >= 100 ? 'var(--red)' : pct >= 80 ? 'var(--amber)' : 'var(--accent)';
+      const label = b.scope === 'global' ? 'global' : `${b.scope}: ${b.scope_id || '—'}`;
+      return `
+        <div class="gauge-card">
+          <div class="gauge-header">
+            <span>${label} (${b.period})</span>
+            <span style="color:${color}">${pct.toFixed(1)}%</span>
+          </div>
+          <div class="gauge-bar-bg">
+            <div class="gauge-bar" style="width:${pct}%;background:${color}"></div>
+          </div>
+          <div class="gauge-footer">
+            <span>$${(s.spent_usd||0).toFixed(4)} spent</span>
+            <span>limit $${(b.limit_usd||0).toFixed(2)} · ${b.action}</span>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Top Consumers Table ────────────────────────────────────────────────────
+
+  function renderTopConsumers(data) {
+    const tbody = document.querySelector('#consumers-table tbody');
+    if (!data || data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-msg">No data</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(r => `
+      <tr>
+        <td>${r.scope_id || '—'}</td>
+        <td>$${(parseFloat(r.cost_usd)||0).toFixed(6)}</td>
+        <td>${fmtNum(r.calls)}</td>
+      </tr>`).join('');
+  }
+
+  // ── Recent Calls Table ─────────────────────────────────────────────────────
+
+  function renderRecentCalls(data) {
+    const tbody = document.querySelector('#recent-table tbody');
+    if (!data || data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-msg">No data</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(r => {
+      const ts = r.timestamp ? r.timestamp.replace('T', ' ').slice(0, 19) : '—';
+      const statusClass = r.status === 'success' ? 'status-success' : 'status-error';
+      const model = r.model ? r.model.split('/').pop() : '—';
+      return `
+        <tr>
+          <td>${ts}</td>
+          <td title="${r.model}">${model}</td>
+          <td>${fmtNum(r.input_tokens||0)}</td>
+          <td>${fmtNum(r.output_tokens||0)}</td>
+          <td>$${(parseFloat(r.cost_usd)||0).toFixed(6)}</td>
+          <td>${r.latency_ms||0}</td>
+          <td class="${statusClass}">${r.status||'—'}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function fmtNum(n) {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+    return String(n);
+  }
+
+  // ── Main refresh ───────────────────────────────────────────────────────────
+
+  async function refresh() {
+    try {
+      const data = await fetchAll();
+      renderKPIs(data.summary);
+      renderLineChart(data.daily);
+      renderDonutChart(data.byModel);
+      renderBudgetGauges(data.budgetStatus);
+      renderTopConsumers(data.topConsumers);
+      renderRecentCalls(data.recent);
+      document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+    } catch (e) {
+      console.error('Dashboard refresh failed:', e);
+    }
+  }
+
+  refresh();
+  setInterval(refresh, 30_000);
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+database:
+  path: ./data/usage.db
+
+server:
+  host: 0.0.0.0
+  port: 8100
+  reload: false
+
+defaults:
+  warn_threshold: 0.8
+  # global_monthly_limit_usd: 100.0

@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Administrator\\\\Desktop\\\\RAG Portfolio\\\\projects\\\\06-token-cost-budget-dashboard\" -Recurse -Force)",
+      "Bash(Select-Object FullName, PSIsContainer)",
+      "Bash(Sort-Object FullName)",
+      "Bash(grep -E '\\\\.\\(txt|yaml|yml|env|sql|py|html|json\\)$|^d')",
+      "Bash(git -C \"c:\\\\Users\\\\Administrator\\\\Desktop\\\\RAG Portfolio\\\\projects\\\\06-token-cost-budget-dashboard\" log --oneline -10)",
+      "Bash(ls \"c:\\\\Users\\\\Administrator\\\\Desktop\\\\RAG Portfolio\\\\projects\")",
+      "Read(//c/Users/Administrator/Desktop/RAG Portfolio/projects/**)",
+      "Bash(python3 -c \"import litellm; help\\(litellm.CustomLogger\\)\")",
+      "Bash(python3 -c ' *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Administrator\\\\Desktop\\\\RAG Portfolio\\\\projects\\\\04-multi-agent-research-assistant\" -Force)",
+      "Bash(Select-Object Name)",
+      "Bash(pip install *)",
+      "Bash(pip --version)",
+      "Bash(pip index *)",
+      "Bash(pip show *)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(python -c \"from src.config import get_config; from src.db import configure, init_db; configure\\('./data/test.db'\\); init_db\\(\\); print\\('DB init OK'\\); from src.api import app; print\\('API import OK'\\)\")",
+      "Bash(python examples/simulate_load.py --days 30 --calls 200)"
+    ]
+  }
+}
