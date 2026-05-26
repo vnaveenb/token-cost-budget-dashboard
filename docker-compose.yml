@@ -7,7 +7,7 @@ services:
     volumes:
       - tracker_data:/app/data
     ports:
-      - "8100:8100"
+      - "8102:8100"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8100/health || exit 1"]
       interval: 30s
